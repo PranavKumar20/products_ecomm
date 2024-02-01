@@ -1,29 +1,30 @@
 const express = require('express');
-const {zod} = require('zod');
-const Product = require("./db");
+const zod = require('zod');
+const Products = require("./db");
 
 const app = express();
 app.use(express.json());
+const port = 3000;
 
 const createBody = zod.object({
     name:zod.string().min(1),
     description:zod.string().min(1),
     price:zod.number().positive(),
-    varients:zod.array(zod.string())
+    variants:zod.array(zod.string())
 })
 
 app.post("/create", async (req,res)=>{
-    const {success} = req.body.safeParse(createBody);
+    const {success} = createBody.safeParse(req.body);
     if(!success){
         res.status(403).json({
             msg:"Incorrect Inputs"
         })
     }
-    const product = await Product.create({
+    const product = await Products.create({
         name: req.body.name,
         description: req.body.description,
-        print: req.body.price,
-        varients: req.body.varients
+        price: req.body.price,
+        variants: req.body.variants
     })
     
     res.status(200).json({
@@ -31,22 +32,31 @@ app.post("/create", async (req,res)=>{
     })
 })
 
+app.get("/get", async (req,res)=>{
+    const products = await Products.find({});
+    res.status(200).json({
+        products: products
+    })
+})
+
 const UpdateBody = zod.object({
     name: zod.string().optional(),
     description: zod.string().optional(),
     price: zod.number().optional(),
-    varients: zod.array(zod.string()).optional()
+    variants: zod.array(zod.string()).optional()
 })
 
-app.put("/update/:id", async (req,res)=>{
-    const {success} = req.body.safeParse(UpdateBody);
+app.put("/update", async (req,res)=>{
+    const {success,data} = UpdateBody.safeParse(req.body);
     if(!success){
         res.status(403).json({
             msg:"Incorrect Inputs"
         })
     }
-    const result = await Product.updateOne(req.body,{
-        _id:req.params.id
+    const result = await Products.updateOne({
+        _id:req.query.id
+    },{
+        $set:data
     })
 
     if(result.n === 0){
@@ -60,22 +70,43 @@ app.put("/update/:id", async (req,res)=>{
     })
 })
 
-app.delete("/delete/:id", async(req,res)=>{
-    const productId=req.params.id;
-    const existingProduct = await Product.findById(productId);
+app.delete("/delete", async(req,res)=>{
+    const productId=req.query.id;
+    const existingProduct = await Products.findById(productId);
     if (!existingProduct) {
       return res.status(404).json({
         msg: "Product not found"
       });
     }
 
-    await Product.deleteOne({ _id: productId });
+    await Products.deleteOne({ _id: productId });
 
     res.status(200).json({
       msg: "Product deleted successfully"
     });
 })
 
+
+const searchBody = zod.object({
+    name:zod.string().optional(),
+    description:zod.string().optional(),
+    variants:zod.array(zod.string()).optional()
+})
+
+app.get("/search", async(req,res)=>{
+
+    const { query } = req.query;
+
+    const products = await Products.find({
+        $or: [
+          { name: { $regex: query, $options: 'i' } }, 
+          { description: { $regex: query, $options: 'i' } }, 
+          { variants: { $in: [query] } }, 
+        ],
+      });
+  
+      res.status(200).json(products);
+})
 
 app.listen(port,()=>{
     console.log(`server is listening on port: ${port}`);
